@@ -9,7 +9,9 @@
 package audit
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"github.com/google/uuid"
 	"github.com/microsoft/azure-devops-go-api/azuredevops"
 	"io"
@@ -25,6 +27,18 @@ type Client interface {
 	DownloadLog(context.Context, DownloadLogArgs) (io.ReadCloser, error)
 	// [Preview API] Queries audit log entries
 	QueryLog(context.Context, QueryLogArgs) (*AuditLogQueryResult, error)
+	// [Preview API] Creates new Audit Stream
+	CreateAuditStream(context.Context, CreateAuditStreamArgs) (*AuditStream, error)
+	// [Preview API] Delete Audit Stream
+	DeleteAuditStream(context.Context, DeleteAuditStreamArgs) error
+	// [Preview API] Return all Audit Streams scoped to an organization
+	QueryAllAuditStreams(context.Context) (*[]AuditStream, error)
+	// [Preview API] Return Audit Stream with id of streamId if one exists otherwise throw
+	QueryAuditStreamById(context.Context, QueryStreamByIdArgs) (*AuditStream, error)
+	// [Preview API] Update existing Audit Stream status
+	UpdateAuditStreamStatus(context.Context, UpdateAuditStreamStatusArgs) (*AuditStream, error)
+	// [Preview API] Update existing Audit Stream
+	UpdateAuditStream(context.Context, UpdateAuditStreamArgs) (*AuditStream, error)
 }
 
 type ClientImpl struct {
@@ -114,4 +128,151 @@ type QueryLogArgs struct {
 	ContinuationToken *string
 	// (optional) Skips aggregating events and leaves them as individual entries instead. By default events are aggregated. Event types that are aggregated: AuditLog.AccessLog.
 	SkipAggregation *bool
+}
+
+// [Preview API] Creates new Audit Stream
+func (client *ClientImpl) CreateAuditStream(ctx context.Context, args CreateAuditStreamArgs) (*AuditStream, error) {
+	queryParams := url.Values{}
+	if args.DaysToBackfill == nil {
+		return nil, &azuredevops.ArgumentNilError{ArgumentName: "args.DaysToBackfill"}
+	}
+	queryParams.Add("status", strconv.Itoa(*args.DaysToBackfill))
+
+	body, marshalErr := json.Marshal(*args.AuditStreamToCreate)
+	if marshalErr != nil {
+		return nil, marshalErr
+	}
+	locationId, _ := uuid.Parse("77d60bf9-1882-41c5-a90d-3a6d3c13fd3b")
+	resp, err := client.Client.Send(ctx, http.MethodPost, locationId, "6.0-preview.1", nil, queryParams, bytes.NewReader(body), "application/json", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseValue AuditStream
+	err = client.Client.UnmarshalBody(resp, &responseValue)
+	return &responseValue, err
+}
+
+type CreateAuditStreamArgs struct {
+	// (required) The number of days of previously recorded audit data that will be replayed into the stream
+	DaysToBackfill *int
+	// (required) The audit stream to create.
+	AuditStreamToCreate *AuditStream
+}
+
+// [Preview API] Deletes the Audit Stream
+func (client *ClientImpl) DeleteAuditStream(ctx context.Context, args DeleteAuditStreamArgs) error {
+	routeValues := make(map[string]string)
+	if args.StreamId == nil {
+		return &azuredevops.ArgumentNilOrEmptyError{ArgumentName: "args.StreamId"}
+	}
+	routeValues["streamId"] = strconv.Itoa(*args.StreamId)
+
+	locationId, _ := uuid.Parse("77d60bf9-1882-41c5-a90d-3a6d3c13fd3b")
+	_, err := client.Client.Send(ctx, http.MethodDelete, locationId, "6.0-preview.1", routeValues, nil, nil, "", "application/json", nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type DeleteAuditStreamArgs struct {
+	// (required) The ID of stream entry to delete
+	StreamId *int
+}
+
+// [Preview API] Return all Audit Streams scoped to an organization
+func (client *ClientImpl) QueryAllAuditStreams(ctx context.Context) (*[]AuditStream, error) {
+	locationId, _ := uuid.Parse("77d60bf9-1882-41c5-a90d-3a6d3c13fd3b")
+	resp, err := client.Client.Send(ctx, http.MethodGet, locationId, "6.0-preview.1", nil, nil, nil, "", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseValue []AuditStream
+	err = client.Client.UnmarshalBody(resp, &responseValue)
+	return &responseValue, err
+}
+
+// [Preview API] Return Audit Stream with id of streamId if one exists otherwise throw
+func (client *ClientImpl) QueryAuditStreamById(ctx context.Context, args QueryStreamByIdArgs) (*AuditStream, error) {
+	routeValues := make(map[string]string)
+	if args.StreamId == nil {
+		return nil, &azuredevops.ArgumentNilError{ArgumentName: "args.StreamId"}
+	}
+	routeValues["streamId"] = strconv.Itoa(*args.StreamId)
+
+	locationId, _ := uuid.Parse("77d60bf9-1882-41c5-a90d-3a6d3c13fd3b")
+	resp, err := client.Client.Send(ctx, http.MethodGet, locationId, "6.0-preview.1", routeValues, nil, nil, "", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseValue AuditStream
+	err = client.Client.UnmarshalBody(resp, &responseValue)
+	return &responseValue, err
+}
+
+type QueryStreamByIdArgs struct {
+	// (required) The ID or name of the audit stream.
+	StreamId *int
+}
+
+// [Preview API] Update existing Audit Stream status
+func (client *ClientImpl) UpdateAuditStreamStatus(ctx context.Context, args UpdateAuditStreamStatusArgs) (*AuditStream, error) {
+	routeValues := make(map[string]string)
+	if args.StreamId == nil {
+		return nil, &azuredevops.ArgumentNilError{ArgumentName: "args.StreamId"}
+	}
+	routeValues["streamId"] = strconv.Itoa(*args.StreamId)
+
+	queryParams := url.Values{}
+	if args.Status == nil {
+		return nil, &azuredevops.ArgumentNilError{ArgumentName: "args.Status"}
+	}
+	queryParams.Add("status", string(*args.Status))
+
+	locationId, _ := uuid.Parse("77d60bf9-1882-41c5-a90d-3a6d3c13fd3b")
+	resp, err := client.Client.Send(ctx, http.MethodPut, locationId, "6.0-preview.1", routeValues, queryParams, nil, "", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseValue AuditStream
+	err = client.Client.UnmarshalBody(resp, &responseValue)
+	return &responseValue, err
+}
+
+type UpdateAuditStreamStatusArgs struct {
+	// Status of the audit stream
+	Status *AuditStreamStatus
+	// (required) The ID or name of the audit stream
+	StreamId *int
+}
+
+// [Preview API] Update existing Audit Stream
+func (client *ClientImpl) UpdateAuditStream(ctx context.Context, args UpdateAuditStreamArgs) (*AuditStream, error) {
+	if args.AuditStreamUpdate == nil {
+		return nil, &azuredevops.ArgumentNilError{ArgumentName: "args.AuditStreamUpdate"}
+	}
+
+	body, marshalErr := json.Marshal(*args.AuditStreamUpdate)
+	if marshalErr != nil {
+		return nil, marshalErr
+	}
+	locationId, _ := uuid.Parse("77d60bf9-1882-41c5-a90d-3a6d3c13fd3b")
+	resp, err := client.Client.Send(ctx, http.MethodPut, locationId, "6.0-preview.1", nil, nil, bytes.NewReader(body), "application/json", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var responseValue AuditStream
+	err = client.Client.UnmarshalBody(resp, &responseValue)
+	return &responseValue, err
+}
+
+type UpdateAuditStreamArgs struct {
+	// (required) The updates for the audit stream.
+	AuditStreamUpdate *AuditStream
 }
